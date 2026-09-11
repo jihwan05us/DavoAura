@@ -1,0 +1,7 @@
+## Interface: 120100
+## Title: DavoAura
+## Notes: Single-target HoT tracker
+## SavedVariables: DavoAuraDB
+## Version: 1.0
+
+DavoAura.lua

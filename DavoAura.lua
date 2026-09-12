@@ -59,7 +59,16 @@ local function InitButton(button)
     timerTxt:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
     timerTxt:SetPoint("BOTTOM", button, "BOTTOM", 0, 2)
 
-    -- Throttled tick on the cooldown frame: update timer text
+    -- 2px inward yellow border for pandemic window
+    local glow = CreateFrame("Frame", nil, button, "BackdropTemplate")
+    glow:SetPoint("TOPLEFT",     button, "TOPLEFT",      2, -2)
+    glow:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2,  2)
+    glow:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
+    glow:SetBackdropBorderColor(1, 0.85, 0, 1)
+    glow:SetFrameLevel(button:GetFrameLevel() + 2)
+    glow:Hide()
+
+    -- Throttled tick on the cooldown frame: update timer text and pandemic glow
     cd.davoTick = 0
     cd:HookScript("OnUpdate", function(self, elapsed)
         self.davoTick = self.davoTick + elapsed
@@ -70,20 +79,12 @@ local function InitButton(button)
         local remaining = (startMs + durMs) / 1000 - GetTime()
         if remaining < 0 then remaining = 0 end
         timerTxt:SetText(string.format("%.1f", remaining))
+        if remaining <= PANDEMIC then
+            glow:Show()
+        else
+            glow:Hide()
+        end
     end)
-
-    -- Pandemic glow: yellow border texture registered via AddPandemicRegion.
-    -- AuraContainer shows/hides it automatically when remaining <= pandemic threshold.
-    local borderFrame = CreateFrame("Frame", nil, button)
-    borderFrame:SetAllPoints(button)
-    borderFrame:SetFrameStrata("HIGH")
-    borderFrame:SetFixedFrameStrata(true)
-    local glowTex = borderFrame:CreateTexture(nil, "OVERLAY")
-    glowTex:SetAllPoints(borderFrame)
-    glowTex:SetTexture("Interface\\Buttons\\WHITE8X8")
-    glowTex:SetBlendMode("ADD")
-    glowTex:SetVertexColor(1, 0.85, 0, 0.9)
-    button:AddPandemicRegion(glowTex)
 end
 
 -- ============================================================

@@ -233,6 +233,20 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("UNIT_AURA")
 
+SLASH_DAVOAURA1 = "/da"
+SlashCmdList["DAVOAURA"] = function()
+    print("=== DavoAura Debug ===")
+    print("trackedUnit:", trackedUnit)
+    print("framePool count:", (function() local n=0; for _ in pairs(framePool) do n=n+1 end; return n end)())
+    for frame in pairs(framePool) do
+        local unit = frame.displayedUnit or frame.unit
+        print("  frame:", frame:GetName(), "unit:", unit, "shown:", frame:IsShown())
+    end
+    for _, unit in ipairs(ALL_UNITS) do
+        print("  UnitExists("..unit.."):", UnitExists(unit))
+    end
+end
+
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
         C_Timer.After(0, RefreshAll)

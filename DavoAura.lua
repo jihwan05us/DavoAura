@@ -2,12 +2,9 @@
 -- Config (edit these to tune)
 -- ============================================================
 
-local AURA_NAME     = "Lifebloom"
+local AURA_IDS      = { [33763] = true, [290754] = true }
 local AURA_DURATION = 15
-local PANDEMIC_PCT  = 30
-local PANDEMIC      = AURA_DURATION * PANDEMIC_PCT / 100
-
-local SIZE_MISSING  = 48
+local PANDEMIC      = AURA_DURATION * 0.3
 local SIZE_ACTIVE   = 30
 
 -- ============================================================
@@ -19,29 +16,18 @@ local expirationTime = nil
 local lastOnUpdate   = 0
 local onUpdateActive = false
 
-local STATE_MISSING      = 1
-local STATE_NEEDS_REFILL = 2
-local STATE_ACTIVE       = 3
-
 local ALL_UNITS = { "player", "party1", "party2", "party3", "party4" }
-
-local iconTex  -- forward declaration, assigned in Frames section
-local function RefreshIcon(iconID)
-    if iconTex and iconID then
-        iconTex:SetTexture(iconID)
-    end
-end
 
 -- ============================================================
 -- Aura
 -- ============================================================
 
-local function FindAuraOnUnit(auraName, unit)
+local function FindAuraOnUnit(unit)
     if not UnitExists(unit) then return nil end
     for i = 1, 255 do
         local auraData = C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL")
         if not auraData or not auraData.name then return nil end
-        if auraData.name == auraName and auraData.sourceUnit == "player" then
+        if AURA_IDS[auraData.spellId] then
             return auraData.expirationTime, auraData.icon
         end
     end
@@ -57,70 +43,89 @@ end
 
 local function ScanAllUnits()
     for _, unit in ipairs(ALL_UNITS) do
-        local expTime, iconID = FindAuraOnUnit(AURA_NAME, unit)
+        local expTime, iconID = FindAuraOnUnit(unit)
         if expTime then
             trackedUnit    = unit
             expirationTime = expTime
-            RefreshIcon(iconID)
-            return
+            return iconID
         end
     end
     trackedUnit    = nil
     expirationTime = nil
+    return nil
 end
 
 local function CheckUnit(unit)
-    local expTime, iconID = FindAuraOnUnit(AURA_NAME, unit)
+    local expTime, iconID = FindAuraOnUnit(unit)
     if expTime then
         trackedUnit    = unit
         expirationTime = expTime
-        RefreshIcon(iconID)
-        return
+        return iconID
     end
     if unit == trackedUnit then
         trackedUnit    = nil
         expirationTime = nil
     end
+    return nil
 end
 
 -- ============================================================
--- Frames
+-- Fonts
 -- ============================================================
-
-local iconFrame = CreateFrame("Frame", "DavoAuraFrame", UIParent)
-iconFrame:SetSize(SIZE_MISSING, SIZE_MISSING)
-iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-iconFrame:Hide()
-
-local glowFrame = CreateFrame("Frame", nil, iconFrame, "BackdropTemplate")
-glowFrame:SetPoint("TOPLEFT",     iconFrame, "TOPLEFT",      2, -2)
-glowFrame:SetPoint("BOTTOMRIGHT", iconFrame, "BOTTOMRIGHT", -2,  2)
-glowFrame:SetBackdrop({
-    edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 2,
-})
-glowFrame:Hide()
-
-iconTex = iconFrame:CreateTexture(nil, "ARTWORK")
-iconTex:SetAllPoints()
-
-local cdFrame = CreateFrame("Cooldown", nil, iconFrame, "CooldownFrameTemplate")
-cdFrame:SetAllPoints()
-cdFrame:SetDrawSwipe(true)
-cdFrame:SetHideCountdownNumbers(true)
 
 local timerFont = CreateFont("DavoAuraTimerFont")
 timerFont:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
 
-local timerText = iconFrame:CreateFontString(nil, "OVERLAY")
-timerText:SetFontObject(timerFont)
-timerText:SetPoint("BOTTOM", iconFrame, "BOTTOM", 0, 2)
-
 -- ============================================================
--- Display
+-- Per-frame icon (attached directly to compact party frame)
 -- ============================================================
 
 local unitFrameMap = {}
+
+-- Invisible ticker frame for OnUpdate
+local tickFrame = CreateFrame("Frame")
+
+local function EnsureIcon(frame)
+    if frame.davoAuraIcon then return frame.davoAuraIcon end
+
+    local icon = CreateFrame("Frame", nil, frame)
+    icon:SetSize(SIZE_ACTIVE, SIZE_ACTIVE)
+    icon:SetPoint("TOPLEFT", frame, "TOPRIGHT", 1, -1)
+    icon:Hide()
+
+    local glow = CreateFrame("Frame", nil, icon, "BackdropTemplate")
+    glow:SetPoint("TOPLEFT",     icon, "TOPLEFT",      2, -2)
+    glow:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", -2,  2)
+    glow:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
+    glow:Hide()
+    icon.glow = glow
+
+    local tex = icon:CreateTexture(nil, "ARTWORK")
+    tex:SetAllPoints()
+    icon.tex = tex
+
+    local cd = CreateFrame("Cooldown", nil, icon, "CooldownFrameTemplate")
+    cd:SetAllPoints()
+    cd:SetDrawSwipe(true)
+    cd:SetHideCountdownNumbers(true)
+    icon.cd = cd
+
+    local text = icon:CreateFontString(nil, "OVERLAY")
+    text:SetFontObject(timerFont)
+    text:SetPoint("BOTTOM", icon, "BOTTOM", 0, 2)
+    icon.text = text
+
+    frame.davoAuraIcon = icon
+    return icon
+end
+
+local function RegisterFrame(frame)
+    if not frame or frame:IsForbidden() then return end
+    local unit = frame.displayedUnit or frame.unit
+    if not unit then return end
+    unitFrameMap[unit] = frame
+    EnsureIcon(frame)
+end
 
 local function TrackCompactFrame(frame)
     if not frame or frame:IsForbidden() then return end
@@ -128,71 +133,43 @@ local function TrackCompactFrame(frame)
     if not name then return end
     if string.sub(name, 1, 17) ~= "CompactPartyFrame"
     and string.sub(name, 1, 11) ~= "CompactRaid" then return end
-    local unit = frame.displayedUnit or frame.unit
-    if unit then
-        unitFrameMap[unit] = frame
-    end
+    RegisterFrame(frame)
 end
 
 hooksecurefunc("CompactUnitFrame_SetUnit",       TrackCompactFrame)
 hooksecurefunc("CompactUnitFrame_UpdateAll",     TrackCompactFrame)
 hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackCompactFrame)
 
-local function AddFrameToMap(frame)
-    if not frame or frame:IsForbidden() then return end
-    local unit = frame.displayedUnit or frame.unit
-    if unit then
-        unitFrameMap[unit] = frame
-    end
-end
-
 local function ScanExistingFrames()
     if CompactPartyFrame and CompactPartyFrame.memberUnitFrames then
         for _, frame in ipairs(CompactPartyFrame.memberUnitFrames) do
-            AddFrameToMap(frame)
+            RegisterFrame(frame)
         end
     end
     if CompactRaidFrameContainer and CompactRaidFrameContainer.ApplyToFrames then
-        CompactRaidFrameContainer:ApplyToFrames("all", AddFrameToMap)
+        CompactRaidFrameContainer:ApplyToFrames("all", RegisterFrame)
     end
 end
 
-local function GetUnitFrame(unit)
-    local f = unitFrameMap[unit]
-    if f and not f:IsForbidden() and f:IsShown() then return f end
-    return nil
-end
+-- ============================================================
+-- Display
+-- ============================================================
 
-local function SetGlow(color)
-    if color == "red" then
-        glowFrame:SetBackdropBorderColor(1, 0.1, 0.1, 1)
-        glowFrame:Show()
-    elseif color == "yellow" then
-        glowFrame:SetBackdropBorderColor(1, 0.85, 0, 1)
-        glowFrame:Show()
-    else
-        glowFrame:Hide()
+local function HideAllIcons()
+    for _, frame in pairs(unitFrameMap) do
+        if frame.davoAuraIcon then
+            frame.davoAuraIcon:Hide()
+        end
     end
 end
 
-local function AnchorToUnit(unit)
-    local uf = GetUnitFrame(unit)
-    iconFrame:ClearAllPoints()
-    if uf then
-        iconFrame:SetPoint("TOPLEFT", uf, "TOPRIGHT", 0, 0)
-    else
-        iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+local function RefreshIconTexture(iconID)
+    if not iconID then return end
+    for _, frame in pairs(unitFrameMap) do
+        if frame.davoAuraIcon then
+            frame.davoAuraIcon.tex:SetTexture(iconID)
+        end
     end
-end
-
-local function GetState()
-    if not trackedUnit then
-        return STATE_MISSING
-    end
-    if expirationTime - GetTime() <= PANDEMIC then
-        return STATE_NEEDS_REFILL
-    end
-    return STATE_ACTIVE
 end
 
 local UpdateDisplay
@@ -200,7 +177,7 @@ local UpdateDisplay
 local function EnableOnUpdate(enable)
     if enable == onUpdateActive then return end
     if enable then
-        iconFrame:SetScript("OnUpdate", function(self, elapsed)
+        tickFrame:SetScript("OnUpdate", function(self, elapsed)
             lastOnUpdate = lastOnUpdate + elapsed
             if lastOnUpdate < 0.1 then return end
             lastOnUpdate = 0
@@ -208,45 +185,41 @@ local function EnableOnUpdate(enable)
         end)
         onUpdateActive = true
     else
-        iconFrame:SetScript("OnUpdate", nil)
+        tickFrame:SetScript("OnUpdate", nil)
         onUpdateActive = false
         lastOnUpdate   = 0
     end
 end
 
 UpdateDisplay = function()
-    local state = GetState()
+    HideAllIcons()
 
-    if state == STATE_MISSING then
-        iconFrame:SetSize(SIZE_MISSING, SIZE_MISSING)
-        iconFrame:ClearAllPoints()
-        iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        SetGlow("red")
-        cdFrame:SetCooldown(0, 0)
-        timerText:SetText("")
-        iconFrame:Show()
+    if not trackedUnit then
         EnableOnUpdate(false)
-
-    elseif state == STATE_NEEDS_REFILL then
-        iconFrame:SetSize(SIZE_ACTIVE, SIZE_ACTIVE)
-        AnchorToUnit(trackedUnit)
-        SetGlow("yellow")
-        local remaining = expirationTime - GetTime()
-        cdFrame:SetCooldown(expirationTime - AURA_DURATION, AURA_DURATION)
-        timerText:SetText(string.format("%.1f", math.max(0, remaining)))
-        iconFrame:Show()
-        EnableOnUpdate(true)
-
-    else
-        iconFrame:SetSize(SIZE_ACTIVE, SIZE_ACTIVE)
-        AnchorToUnit(trackedUnit)
-        SetGlow(nil)
-        local remaining = expirationTime - GetTime()
-        cdFrame:SetCooldown(expirationTime - AURA_DURATION, AURA_DURATION)
-        timerText:SetText(string.format("%.1f", math.max(0, remaining)))
-        iconFrame:Show()
-        EnableOnUpdate(true)
+        return
     end
+
+    local frame = unitFrameMap[trackedUnit]
+    if not frame or not frame.davoAuraIcon then
+        EnableOnUpdate(false)
+        return
+    end
+
+    local remaining = expirationTime - GetTime()
+    local icon = frame.davoAuraIcon
+
+    icon.cd:SetCooldown(expirationTime - AURA_DURATION, AURA_DURATION)
+    icon.text:SetText(string.format("%.1f", math.max(0, remaining)))
+
+    if remaining <= PANDEMIC then
+        icon.glow:SetBackdropBorderColor(1, 0.85, 0, 1)
+        icon.glow:Show()
+    else
+        icon.glow:Hide()
+    end
+
+    icon:Show()
+    EnableOnUpdate(true)
 end
 
 -- ============================================================
@@ -261,18 +234,21 @@ eventFrame:RegisterEvent("UNIT_AURA")
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_ENTERING_WORLD" then
         ScanExistingFrames()
-        ScanAllUnits()
+        local iconID = ScanAllUnits()
+        RefreshIconTexture(iconID)
         UpdateDisplay()
 
     elseif event == "GROUP_ROSTER_UPDATE" then
         ScanExistingFrames()
-        ScanAllUnits()
+        local iconID = ScanAllUnits()
+        RefreshIconTexture(iconID)
         UpdateDisplay()
 
     elseif event == "UNIT_AURA" then
         local unit = ...
         if not IsUnitTracked(unit) then return end
-        CheckUnit(unit)
+        local iconID = CheckUnit(unit)
+        if iconID then RefreshIconTexture(iconID) end
         UpdateDisplay()
     end
 end)

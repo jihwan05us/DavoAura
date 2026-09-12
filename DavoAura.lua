@@ -8,9 +8,7 @@ local PANDEMIC_PCT  = 30
 local PANDEMIC      = AURA_DURATION * PANDEMIC_PCT / 100
 
 local SIZE_MISSING  = 48
-local SIZE_ACTIVE   = 36
-local OFFSET_X      = 10
-local OFFSET_Y      = 10
+local SIZE_ACTIVE   = 28
 
 -- ============================================================
 -- State
@@ -181,7 +179,7 @@ local function AnchorToUnit(unit)
     local uf = GetUnitFrame(unit)
     iconFrame:ClearAllPoints()
     if uf then
-        iconFrame:SetPoint("TOPRIGHT", uf, "TOPRIGHT", OFFSET_X, OFFSET_Y)
+        iconFrame:SetPoint("TOPLEFT", uf, "TOPRIGHT", 0, 0)
     else
         iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end

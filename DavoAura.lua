@@ -7,8 +7,8 @@ local DEFAULTS = {
     auraDuration = 15,
     pandemicPct  = 30,
     missingSize  = 48,
-    refillSize   = 24,
-    activeSize   = 24,
+    refillSize   = 36,
+    activeSize   = 36,
     offsetX      = 10,
     offsetY      = 10,
 }
@@ -36,8 +36,6 @@ end
 
 local trackedUnit    = nil
 local expirationTime = nil
-local groupType      = "SOLO"
-local partyUnits     = { "player" }
 local lastOnUpdate   = 0
 local onUpdateActive = false
 
@@ -45,41 +43,7 @@ local STATE_MISSING      = 1
 local STATE_NEEDS_REFILL = 2
 local STATE_ACTIVE       = 3
 
--- ============================================================
--- Group
--- ============================================================
-
-local function GetGroupType()
-    if IsInRaid() then
-        if GetNumGroupMembers() <= 10 then
-            return "RBG_SMALL"
-        end
-        return "RAID"
-    end
-    if IsInGroup() then
-        return "PARTY"
-    end
-    return "SOLO"
-end
-
-local function BuildPartyUnits(gt)
-    local units = { "player" }
-    if gt == "PARTY" then
-        for i = 1, 4 do
-            units[#units + 1] = "party" .. i
-        end
-    elseif gt == "RBG_SMALL" then
-        for i = 1, 9 do
-            units[#units + 1] = "raid" .. i
-        end
-    end
-    return units
-end
-
-local function RefreshGroupCache()
-    groupType  = GetGroupType()
-    partyUnits = BuildPartyUnits(groupType)
-end
+local ALL_UNITS = { "player", "party1", "party2", "party3", "party4" }
 
 -- ============================================================
 -- Aura
@@ -91,25 +55,26 @@ local function FindAuraOnUnit(auraName, unit)
         local auraData = C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL")
         if not auraData or not auraData.name then return nil end
         if auraData.name == auraName and auraData.sourceUnit == "player" then
-            return auraData.expirationTime
+            return auraData.expirationTime, auraData.icon
         end
     end
     return nil
 end
 
 local function IsUnitTracked(unit)
-    for _, u in ipairs(partyUnits) do
+    for _, u in ipairs(ALL_UNITS) do
         if u == unit then return true end
     end
     return false
 end
 
 local function ScanAllUnits()
-    for _, unit in ipairs(partyUnits) do
-        local expTime = FindAuraOnUnit(cfg.auraName, unit)
+    for _, unit in ipairs(ALL_UNITS) do
+        local expTime, iconID = FindAuraOnUnit(cfg.auraName, unit)
         if expTime then
             trackedUnit    = unit
             expirationTime = expTime
+            RefreshIcon(iconID)
             return
         end
     end
@@ -118,10 +83,11 @@ local function ScanAllUnits()
 end
 
 local function CheckUnit(unit)
-    local expTime = FindAuraOnUnit(cfg.auraName, unit)
+    local expTime, iconID = FindAuraOnUnit(cfg.auraName, unit)
     if expTime then
         trackedUnit    = unit
         expirationTime = expTime
+        RefreshIcon(iconID)
         return
     end
     if unit == trackedUnit then
@@ -151,10 +117,9 @@ glowFrame:Hide()
 local iconTex = iconFrame:CreateTexture(nil, "ARTWORK")
 iconTex:SetAllPoints()
 
-local function RefreshIcon()
-    local info = C_Spell.GetSpellInfo(C_Spell.GetSpellIDForName(cfg.auraName))
-    if info and info.iconID then
-        iconTex:SetTexture(info.iconID)
+local function RefreshIcon(iconID)
+    if iconID then
+        iconTex:SetTexture(iconID)
     end
 end
 
@@ -170,20 +135,27 @@ timerText:SetPoint("BOTTOM", iconFrame, "BOTTOM", 0, 2)
 -- Display logic
 -- ============================================================
 
+local unitFrameMap = {}
+
+local function TrackCompactFrame(frame)
+    if not frame or frame:IsForbidden() then return end
+    local name = frame:GetName()
+    if not name then return end
+    if string.sub(name, 1, 17) ~= "CompactPartyFrame"
+    and string.sub(name, 1, 11) ~= "CompactRaid" then return end
+    local unit = frame.displayedUnit or frame.unit
+    if unit then
+        unitFrameMap[unit] = frame
+    end
+end
+
+hooksecurefunc("CompactUnitFrame_SetUnit",     TrackCompactFrame)
+hooksecurefunc("CompactUnitFrame_UpdateAll",   TrackCompactFrame)
+hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackCompactFrame)
+
 local function GetUnitFrame(unit)
-    if PartyFrame then
-        for i = 1, 5 do
-            local f = PartyFrame["MemberFrame" .. i]
-            if f and f.unit == unit and f:IsShown() then
-                return f
-            end
-        end
-    end
-    local ridx = tonumber(unit:match("^raid(%d+)$"))
-    if ridx then
-        local f = _G["CompactRaidFrame" .. ridx]
-        if f and f:IsShown() then return f end
-    end
+    local f = unitFrameMap[unit]
+    if f and not f:IsForbidden() and f:IsShown() then return f end
     return nil
 end
 
@@ -239,19 +211,7 @@ local function EnableOnUpdate(enable)
 end
 
 UpdateDisplay = function()
-    if groupType == "RAID" then
-        iconFrame:Hide()
-        EnableOnUpdate(false)
-        return
-    end
-
     local state = GetState()
-
-    if groupType == "SOLO" and state ~= STATE_MISSING then
-        iconFrame:Hide()
-        EnableOnUpdate(false)
-        return
-    end
 
     if state == STATE_MISSING then
         iconFrame:SetSize(cfg.missingSize, cfg.missingSize)
@@ -300,15 +260,12 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         local name = ...
         if name ~= "DavoAura" then return end
         LoadConfig()
-        RefreshIcon()
 
     elseif event == "PLAYER_ENTERING_WORLD" then
-        RefreshGroupCache()
         ScanAllUnits()
         UpdateDisplay()
 
     elseif event == "GROUP_ROSTER_UPDATE" then
-        RefreshGroupCache()
         ScanAllUnits()
         UpdateDisplay()
 
@@ -372,7 +329,7 @@ detectBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, y0 + dy * 8 + 5)
 detectBtn:SetText("Detect Duration")
 detectBtn:SetScript("OnClick", function()
     local name = inputs.auraName:GetText()
-    for _, unit in ipairs(partyUnits) do
+    for _, unit in ipairs(ALL_UNITS) do
         if UnitExists(unit) then
             for i = 1, 255 do
                 local auraData = C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL")
@@ -403,7 +360,6 @@ saveBtn:SetScript("OnClick", function()
     cfg.offsetY      = tonumber(inputs.offsetY:GetText())      or cfg.offsetY
     cfg.auraPandemic = cfg.auraDuration * cfg.pandemicPct / 100
     SaveConfig()
-    RefreshIcon()
     ScanAllUnits()
     UpdateDisplay()
     panel:Hide()

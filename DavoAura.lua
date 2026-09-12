@@ -8,7 +8,7 @@ local PANDEMIC_PCT  = 30
 local PANDEMIC      = AURA_DURATION * PANDEMIC_PCT / 100
 
 local SIZE_MISSING  = 48
-local SIZE_ACTIVE   = 28
+local SIZE_ACTIVE   = 30
 
 -- ============================================================
 -- State
@@ -93,11 +93,11 @@ iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 iconFrame:Hide()
 
 local glowFrame = CreateFrame("Frame", nil, iconFrame, "BackdropTemplate")
-glowFrame:SetPoint("TOPLEFT",     iconFrame, "TOPLEFT",     -3,  3)
-glowFrame:SetPoint("BOTTOMRIGHT", iconFrame, "BOTTOMRIGHT",  3, -3)
+glowFrame:SetPoint("TOPLEFT",     iconFrame, "TOPLEFT",      2, -2)
+glowFrame:SetPoint("BOTTOMRIGHT", iconFrame, "BOTTOMRIGHT", -2,  2)
 glowFrame:SetBackdrop({
     edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 3,
+    edgeSize = 2,
 })
 glowFrame:Hide()
 

@@ -20,7 +20,6 @@ local trackedUnit    = nil
 local expirationTime = nil
 local lastOnUpdate   = 0
 local onUpdateActive = false
-local inGroup        = false
 
 local STATE_MISSING      = 1
 local STATE_NEEDS_REFILL = 2
@@ -86,10 +85,6 @@ local function CheckUnit(unit)
     end
 end
 
-local function RefreshInGroup()
-    inGroup = UnitExists("party1")
-end
-
 -- ============================================================
 -- Frames
 -- ============================================================
@@ -145,14 +140,22 @@ hooksecurefunc("CompactUnitFrame_SetUnit",       TrackCompactFrame)
 hooksecurefunc("CompactUnitFrame_UpdateAll",     TrackCompactFrame)
 hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackCompactFrame)
 
+local function AddFrameToMap(frame)
+    if not frame or frame:IsForbidden() then return end
+    local unit = frame.displayedUnit or frame.unit
+    if unit then
+        unitFrameMap[unit] = frame
+    end
+end
+
 local function ScanExistingFrames()
     if CompactPartyFrame and CompactPartyFrame.memberUnitFrames then
         for _, frame in ipairs(CompactPartyFrame.memberUnitFrames) do
-            TrackCompactFrame(frame)
+            AddFrameToMap(frame)
         end
     end
     if CompactRaidFrameContainer and CompactRaidFrameContainer.ApplyToFrames then
-        CompactRaidFrameContainer:ApplyToFrames("all", TrackCompactFrame)
+        CompactRaidFrameContainer:ApplyToFrames("all", AddFrameToMap)
     end
 end
 
@@ -216,12 +219,6 @@ end
 UpdateDisplay = function()
     local state = GetState()
 
-    if not inGroup and state ~= STATE_MISSING then
-        iconFrame:Hide()
-        EnableOnUpdate(false)
-        return
-    end
-
     if state == STATE_MISSING then
         iconFrame:SetSize(SIZE_MISSING, SIZE_MISSING)
         iconFrame:ClearAllPoints()
@@ -266,13 +263,11 @@ eventFrame:RegisterEvent("UNIT_AURA")
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_ENTERING_WORLD" then
         ScanExistingFrames()
-        RefreshInGroup()
         ScanAllUnits()
         UpdateDisplay()
 
     elseif event == "GROUP_ROSTER_UPDATE" then
         ScanExistingFrames()
-        RefreshInGroup()
         ScanAllUnits()
         UpdateDisplay()
 

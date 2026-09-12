@@ -87,9 +87,14 @@ end
 
 local function FindAuraOnUnit(auraName, unit)
     if not UnitExists(unit) then return nil end
-    local aura = AuraUtil.FindAuraByName(auraName, unit, "HELPFUL|PLAYER")
-    if not aura then return nil end
-    return aura.expirationTime
+    for i = 1, 255 do
+        local auraData = C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL")
+        if not auraData or not auraData.name then return nil end
+        if auraData.name == auraName and auraData.sourceUnit == "player" then
+            return auraData.expirationTime
+        end
+    end
+    return nil
 end
 
 local function IsUnitTracked(unit)
@@ -145,7 +150,13 @@ glowFrame:Hide()
 
 local iconTex = iconFrame:CreateTexture(nil, "ARTWORK")
 iconTex:SetAllPoints()
-iconTex:SetTexture("Interface\\Icons\\Spell_Nature_Rejuvenation")
+
+local function RefreshIcon()
+    local info = C_Spell.GetSpellInfo(C_Spell.GetSpellIDForName(cfg.auraName))
+    if info and info.iconID then
+        iconTex:SetTexture(info.iconID)
+    end
+end
 
 local cdFrame = CreateFrame("Cooldown", nil, iconFrame, "CooldownFrameTemplate")
 cdFrame:SetAllPoints()
@@ -289,6 +300,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         local name = ...
         if name ~= "DavoAura" then return end
         LoadConfig()
+        RefreshIcon()
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         RefreshGroupCache()
@@ -361,11 +373,16 @@ detectBtn:SetText("Detect Duration")
 detectBtn:SetScript("OnClick", function()
     local name = inputs.auraName:GetText()
     for _, unit in ipairs(partyUnits) do
-        local aura = AuraUtil.FindAuraByName(name, unit, "HELPFUL|PLAYER")
-        if aura and aura.duration and aura.duration > 0 then
-            inputs.auraDuration:SetText(string.format("%.0f", aura.duration))
-            print("DavoAura: detected duration " .. aura.duration .. "s on " .. unit)
-            return
+        if UnitExists(unit) then
+            for i = 1, 255 do
+                local auraData = C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL")
+                if not auraData or not auraData.name then break end
+                if auraData.name == name and auraData.sourceUnit == "player" and auraData.duration > 0 then
+                    inputs.auraDuration:SetText(string.format("%.0f", auraData.duration))
+                    print("DavoAura: detected duration " .. auraData.duration .. "s on " .. unit)
+                    return
+                end
+            end
         end
     end
     print("DavoAura: aura not found - cast it on someone first.")
@@ -386,6 +403,7 @@ saveBtn:SetScript("OnClick", function()
     cfg.offsetY      = tonumber(inputs.offsetY:GetText())      or cfg.offsetY
     cfg.auraPandemic = cfg.auraDuration * cfg.pandemicPct / 100
     SaveConfig()
+    RefreshIcon()
     ScanAllUnits()
     UpdateDisplay()
     panel:Hide()

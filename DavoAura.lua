@@ -121,21 +121,13 @@ local function HideContainer(frame)
     end
 end
 
--- ============================================================
--- Real aura data flag (AURA_DATA_PROVIDER_SWITCH: false in arena
--- until Blizzard's internal provider is restored)
--- ============================================================
-
-local usingRealAuraData = true
-
 local function UpdateFrame(frame, forceRefresh)
     if not frame or frame:IsForbidden() then return end
 
     local unit = frame.displayedUnit or frame.unit
-    if not usingRealAuraData
-        or not unit
+    if not unit
         or not UnitExists(unit)
-        or not IsGroupUnit(unit) then
+        or (not IsGroupUnit(unit) and not UnitIsUnit(unit, "player")) then
         HideContainer(frame)
         return
     end
@@ -180,15 +172,6 @@ hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackFrame)
 -- ============================================================
 -- Events
 -- ============================================================
-
--- AURA_DATA_PROVIDER_SWITCH: Blizzard sends false in arena (C_Secrets fake data),
--- true when real data is restored. Mirror SweepyBoop's AuraContainerLifecycle.lua.
-local providerFrame = CreateFrame("Frame")
-providerFrame:RegisterEvent("AURA_DATA_PROVIDER_SWITCH")
-providerFrame:SetScript("OnEvent", function(_, _, arg1)
-    usingRealAuraData = arg1 and true or false
-    RefreshAllFrames()
-end)
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")

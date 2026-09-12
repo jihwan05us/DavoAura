@@ -5,7 +5,7 @@
 -- ============================================================
 
 local AURA_IDS = { [33763] = true, [290754] = true }
-local SIZE     = 30
+local SIZE     = 26
 local PANDEMIC = 4.5  -- 15s * 0.3
 
 -- issecretvalue() is a Blizzard global (retail only); mirrors SB's IsSecretValue
@@ -58,35 +58,32 @@ local function InitButton(button)
     local timerTxt = button:CreateFontString(nil, "OVERLAY")
     timerTxt:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
     timerTxt:SetPoint("BOTTOM", button, "BOTTOM", 0, 2)
-    button.davoTimerTxt = timerTxt
 
-    -- 2px inward yellow border for pandemic window
-    local glow = CreateFrame("Frame", nil, button, "BackdropTemplate")
-    glow:SetPoint("TOPLEFT",     button, "TOPLEFT",      2, -2)
-    glow:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2,  2)
-    glow:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
-    glow:SetBackdropBorderColor(1, 0.85, 0, 1)
-    glow:SetFrameLevel(button:GetFrameLevel() + 2)
-    glow:Hide()
-    button.davoGlow = glow
-
-    -- Throttled tick: update timer text and pandemic glow
-    button.davoTick = 0
-    button:HookScript("OnUpdate", function(self, elapsed)
+    -- Throttled tick on the cooldown frame: update timer text
+    cd.davoTick = 0
+    cd:HookScript("OnUpdate", function(self, elapsed)
         self.davoTick = self.davoTick + elapsed
         if self.davoTick < 0.1 then return end
         self.davoTick = 0
-        local startMs, durMs = self.davoCD:GetCooldownTimes()
+        local startMs, durMs = self:GetCooldownTimes()
         if not durMs or durMs == 0 then return end
         local remaining = (startMs + durMs) / 1000 - GetTime()
         if remaining < 0 then remaining = 0 end
-        self.davoTimerTxt:SetText(string.format("%.1f", remaining))
-        if remaining <= PANDEMIC then
-            self.davoGlow:Show()
-        else
-            self.davoGlow:Hide()
-        end
+        timerTxt:SetText(string.format("%.1f", remaining))
     end)
+
+    -- Pandemic glow: yellow border texture registered via AddPandemicRegion.
+    -- AuraContainer shows/hides it automatically when remaining <= pandemic threshold.
+    local borderFrame = CreateFrame("Frame", nil, button)
+    borderFrame:SetAllPoints(button)
+    borderFrame:SetFrameStrata("HIGH")
+    borderFrame:SetFixedFrameStrata(true)
+    local glowTex = borderFrame:CreateTexture(nil, "OVERLAY")
+    glowTex:SetAllPoints(borderFrame)
+    glowTex:SetTexture("Interface\\Buttons\\WHITE8X8")
+    glowTex:SetBlendMode("ADD")
+    glowTex:SetVertexColor(1, 0.85, 0, 0.9)
+    button:AddPandemicRegion(glowTex)
 end
 
 -- ============================================================

@@ -146,14 +146,13 @@ hooksecurefunc("CompactUnitFrame_UpdateAll",     TrackCompactFrame)
 hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackCompactFrame)
 
 local function ScanExistingFrames()
-    for _, frameName in ipairs({ "CompactPartyFrame", "CompactRaidFrame" }) do
-        local i = 1
-        while true do
-            local f = _G[frameName .. i]
-            if not f then break end
-            TrackCompactFrame(f)
-            i = i + 1
+    if CompactPartyFrame and CompactPartyFrame.memberUnitFrames then
+        for _, frame in ipairs(CompactPartyFrame.memberUnitFrames) do
+            TrackCompactFrame(frame)
         end
+    end
+    if CompactRaidFrameContainer and CompactRaidFrameContainer.ApplyToFrames then
+        CompactRaidFrameContainer:ApplyToFrames("all", TrackCompactFrame)
     end
 end
 

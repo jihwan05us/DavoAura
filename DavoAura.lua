@@ -145,6 +145,18 @@ hooksecurefunc("CompactUnitFrame_SetUnit",       TrackCompactFrame)
 hooksecurefunc("CompactUnitFrame_UpdateAll",     TrackCompactFrame)
 hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackCompactFrame)
 
+local function ScanExistingFrames()
+    for _, frameName in ipairs({ "CompactPartyFrame", "CompactRaidFrame" }) do
+        local i = 1
+        while true do
+            local f = _G[frameName .. i]
+            if not f then break end
+            TrackCompactFrame(f)
+            i = i + 1
+        end
+    end
+end
+
 local function GetUnitFrame(unit)
     local f = unitFrameMap[unit]
     if f and not f:IsForbidden() and f:IsShown() then return f end
@@ -254,11 +266,13 @@ eventFrame:RegisterEvent("UNIT_AURA")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_ENTERING_WORLD" then
+        ScanExistingFrames()
         RefreshInGroup()
         ScanAllUnits()
         UpdateDisplay()
 
     elseif event == "GROUP_ROSTER_UPDATE" then
+        ScanExistingFrames()
         RefreshInGroup()
         ScanAllUnits()
         UpdateDisplay()

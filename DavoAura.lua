@@ -18,6 +18,9 @@ local onUpdateActive = false
 
 local ALL_UNITS = { "player", "party1", "party2", "party3", "party4" }
 
+-- Pool of tracked compact frames, keyed by frame object (like SB's cufPool)
+local framePool = {}
+
 -- ============================================================
 -- Aura
 -- ============================================================
@@ -77,13 +80,8 @@ local timerFont = CreateFont("DavoAuraTimerFont")
 timerFont:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
 
 -- ============================================================
--- Per-frame icon (attached directly to compact party frame)
+-- Icon creation
 -- ============================================================
-
-local unitFrameMap = {}
-
--- Invisible ticker frame for OnUpdate
-local tickFrame = CreateFrame("Frame")
 
 local function EnsureIcon(frame)
     if frame.davoAuraIcon then return frame.davoAuraIcon end
@@ -119,60 +117,38 @@ local function EnsureIcon(frame)
     return icon
 end
 
-local function RegisterFrame(frame)
-    if not frame or frame:IsForbidden() then return end
-    local unit = frame.displayedUnit or frame.unit
-    if not unit then return end
-    unitFrameMap[unit] = frame
-    EnsureIcon(frame)
+-- ============================================================
+-- Frame pool (mirrors SB's cufPool pattern)
+-- ============================================================
+
+local function ShouldTrackFrameName(name)
+    if not name then return false end
+    return string.sub(name, 1, 17) == "CompactPartyFrame"
+        or string.sub(name, 1, 11) == "CompactRaid"
 end
 
-local function TrackCompactFrame(frame)
+local function TrackFrame(frame)
     if not frame or frame:IsForbidden() then return end
     local name = frame:GetName()
-    if not name then return end
-    if string.sub(name, 1, 17) ~= "CompactPartyFrame"
-    and string.sub(name, 1, 11) ~= "CompactRaid" then return end
-    RegisterFrame(frame)
-end
-
-hooksecurefunc("CompactUnitFrame_SetUnit",       TrackCompactFrame)
-hooksecurefunc("CompactUnitFrame_UpdateAll",     TrackCompactFrame)
-hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackCompactFrame)
-
-local function ScanExistingFrames()
-    if CompactPartyFrame and CompactPartyFrame.memberUnitFrames then
-        for _, frame in ipairs(CompactPartyFrame.memberUnitFrames) do
-            RegisterFrame(frame)
-        end
-    end
-    if CompactRaidFrameContainer and CompactRaidFrameContainer.ApplyToFrames then
-        CompactRaidFrameContainer:ApplyToFrames("all", RegisterFrame)
+    if ShouldTrackFrameName(name) then
+        framePool[frame] = true
+        EnsureIcon(frame)
+    elseif framePool[frame] then
+        framePool[frame] = nil
     end
 end
+
+hooksecurefunc("CompactUnitFrame_UpdateAll",     TrackFrame)
+hooksecurefunc("CompactUnitFrame_SetUnit",       TrackFrame)
+hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackFrame)
 
 -- ============================================================
 -- Display
 -- ============================================================
 
-local function HideAllIcons()
-    for _, frame in pairs(unitFrameMap) do
-        if frame.davoAuraIcon then
-            frame.davoAuraIcon:Hide()
-        end
-    end
-end
-
-local function RefreshIconTexture(iconID)
-    if not iconID then return end
-    for _, frame in pairs(unitFrameMap) do
-        if frame.davoAuraIcon then
-            frame.davoAuraIcon.tex:SetTexture(iconID)
-        end
-    end
-end
-
 local UpdateDisplay
+
+local tickFrame = CreateFrame("Frame")
 
 local function EnableOnUpdate(enable)
     if enable == onUpdateActive then return end
@@ -192,21 +168,35 @@ local function EnableOnUpdate(enable)
 end
 
 UpdateDisplay = function()
-    HideAllIcons()
+    -- hide all icons first
+    for frame in pairs(framePool) do
+        if frame.davoAuraIcon then
+            frame.davoAuraIcon:Hide()
+        end
+    end
 
     if not trackedUnit then
         EnableOnUpdate(false)
         return
     end
 
-    local frame = unitFrameMap[trackedUnit]
-    if not frame or not frame.davoAuraIcon then
+    -- find the frame whose current unit matches trackedUnit
+    local targetFrame = nil
+    for frame in pairs(framePool) do
+        local unit = frame.displayedUnit or frame.unit
+        if unit == trackedUnit then
+            targetFrame = frame
+            break
+        end
+    end
+
+    if not targetFrame or not targetFrame.davoAuraIcon then
         EnableOnUpdate(false)
         return
     end
 
+    local icon = targetFrame.davoAuraIcon
     local remaining = expirationTime - GetTime()
-    local icon = frame.davoAuraIcon
 
     icon.cd:SetCooldown(expirationTime - AURA_DURATION, AURA_DURATION)
     icon.text:SetText(string.format("%.1f", math.max(0, remaining)))
@@ -222,6 +212,18 @@ UpdateDisplay = function()
     EnableOnUpdate(true)
 end
 
+local function RefreshAll()
+    local iconID = ScanAllUnits()
+    if iconID then
+        for frame in pairs(framePool) do
+            if frame.davoAuraIcon then
+                frame.davoAuraIcon.tex:SetTexture(iconID)
+            end
+        end
+    end
+    UpdateDisplay()
+end
+
 -- ============================================================
 -- Events
 -- ============================================================
@@ -231,22 +233,21 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("UNIT_AURA")
 
-local function FullRefresh()
-    ScanExistingFrames()
-    local iconID = ScanAllUnits()
-    RefreshIconTexture(iconID)
-    UpdateDisplay()
-end
-
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
-        C_Timer.After(0, FullRefresh)
+        C_Timer.After(0, RefreshAll)
 
     elseif event == "UNIT_AURA" then
         local unit = ...
         if not IsUnitTracked(unit) then return end
         local iconID = CheckUnit(unit)
-        if iconID then RefreshIconTexture(iconID) end
+        if iconID then
+            for frame in pairs(framePool) do
+                if frame.davoAuraIcon then
+                    frame.davoAuraIcon.tex:SetTexture(iconID)
+                end
+            end
+        end
         UpdateDisplay()
     end
 end)

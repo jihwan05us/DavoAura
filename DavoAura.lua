@@ -231,18 +231,16 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("UNIT_AURA")
 
-eventFrame:SetScript("OnEvent", function(self, event, ...)
-    if event == "PLAYER_ENTERING_WORLD" then
-        ScanExistingFrames()
-        local iconID = ScanAllUnits()
-        RefreshIconTexture(iconID)
-        UpdateDisplay()
+local function FullRefresh()
+    ScanExistingFrames()
+    local iconID = ScanAllUnits()
+    RefreshIconTexture(iconID)
+    UpdateDisplay()
+end
 
-    elseif event == "GROUP_ROSTER_UPDATE" then
-        ScanExistingFrames()
-        local iconID = ScanAllUnits()
-        RefreshIconTexture(iconID)
-        UpdateDisplay()
+eventFrame:SetScript("OnEvent", function(self, event, ...)
+    if event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
+        C_Timer.After(0, FullRefresh)
 
     elseif event == "UNIT_AURA" then
         local unit = ...

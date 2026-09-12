@@ -1,34 +1,16 @@
 -- ============================================================
--- Config
+-- Config (edit these to tune)
 -- ============================================================
 
-local DEFAULTS = {
-    auraName     = "Lifebloom",
-    auraDuration = 15,
-    pandemicPct  = 30,
-    missingSize  = 48,
-    refillSize   = 36,
-    activeSize   = 36,
-    offsetX      = 10,
-    offsetY      = 10,
-}
+local AURA_NAME     = "Lifebloom"
+local AURA_DURATION = 15
+local PANDEMIC_PCT  = 30
+local PANDEMIC      = AURA_DURATION * PANDEMIC_PCT / 100
 
-local cfg = {}
-
-local function LoadConfig()
-    DavoAuraDB = DavoAuraDB or {}
-    for k, v in pairs(DEFAULTS) do
-        cfg[k] = (DavoAuraDB[k] ~= nil) and DavoAuraDB[k] or v
-    end
-    cfg.auraPandemic = cfg.auraDuration * cfg.pandemicPct / 100
-end
-
-local function SaveConfig()
-    DavoAuraDB = DavoAuraDB or {}
-    for k, v in pairs(cfg) do
-        DavoAuraDB[k] = v
-    end
-end
+local SIZE_MISSING  = 48
+local SIZE_ACTIVE   = 36
+local OFFSET_X      = 10
+local OFFSET_Y      = 10
 
 -- ============================================================
 -- State
@@ -38,12 +20,20 @@ local trackedUnit    = nil
 local expirationTime = nil
 local lastOnUpdate   = 0
 local onUpdateActive = false
+local inGroup        = false
 
 local STATE_MISSING      = 1
 local STATE_NEEDS_REFILL = 2
 local STATE_ACTIVE       = 3
 
 local ALL_UNITS = { "player", "party1", "party2", "party3", "party4" }
+
+local iconTex  -- forward declaration, assigned in Frames section
+local function RefreshIcon(iconID)
+    if iconTex and iconID then
+        iconTex:SetTexture(iconID)
+    end
+end
 
 -- ============================================================
 -- Aura
@@ -70,7 +60,7 @@ end
 
 local function ScanAllUnits()
     for _, unit in ipairs(ALL_UNITS) do
-        local expTime, iconID = FindAuraOnUnit(cfg.auraName, unit)
+        local expTime, iconID = FindAuraOnUnit(AURA_NAME, unit)
         if expTime then
             trackedUnit    = unit
             expirationTime = expTime
@@ -83,7 +73,7 @@ local function ScanAllUnits()
 end
 
 local function CheckUnit(unit)
-    local expTime, iconID = FindAuraOnUnit(cfg.auraName, unit)
+    local expTime, iconID = FindAuraOnUnit(AURA_NAME, unit)
     if expTime then
         trackedUnit    = unit
         expirationTime = expTime
@@ -96,12 +86,16 @@ local function CheckUnit(unit)
     end
 end
 
+local function RefreshInGroup()
+    inGroup = UnitExists("party1")
+end
+
 -- ============================================================
 -- Frames
 -- ============================================================
 
 local iconFrame = CreateFrame("Frame", "DavoAuraFrame", UIParent)
-iconFrame:SetSize(DEFAULTS.missingSize, DEFAULTS.missingSize)
+iconFrame:SetSize(SIZE_MISSING, SIZE_MISSING)
 iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 iconFrame:Hide()
 
@@ -114,25 +108,23 @@ glowFrame:SetBackdrop({
 })
 glowFrame:Hide()
 
-local iconTex = iconFrame:CreateTexture(nil, "ARTWORK")
+iconTex = iconFrame:CreateTexture(nil, "ARTWORK")
 iconTex:SetAllPoints()
-
-local function RefreshIcon(iconID)
-    if iconID then
-        iconTex:SetTexture(iconID)
-    end
-end
 
 local cdFrame = CreateFrame("Cooldown", nil, iconFrame, "CooldownFrameTemplate")
 cdFrame:SetAllPoints()
 cdFrame:SetDrawSwipe(true)
 cdFrame:SetHideCountdownNumbers(true)
 
-local timerText = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+local timerFont = CreateFont("DavoAuraTimerFont")
+timerFont:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+
+local timerText = iconFrame:CreateFontString(nil, "OVERLAY")
+timerText:SetFontObject(timerFont)
 timerText:SetPoint("BOTTOM", iconFrame, "BOTTOM", 0, 2)
 
 -- ============================================================
--- Display logic
+-- Display
 -- ============================================================
 
 local unitFrameMap = {}
@@ -149,8 +141,8 @@ local function TrackCompactFrame(frame)
     end
 end
 
-hooksecurefunc("CompactUnitFrame_SetUnit",     TrackCompactFrame)
-hooksecurefunc("CompactUnitFrame_UpdateAll",   TrackCompactFrame)
+hooksecurefunc("CompactUnitFrame_SetUnit",       TrackCompactFrame)
+hooksecurefunc("CompactUnitFrame_UpdateAll",     TrackCompactFrame)
 hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackCompactFrame)
 
 local function GetUnitFrame(unit)
@@ -175,7 +167,7 @@ local function AnchorToUnit(unit)
     local uf = GetUnitFrame(unit)
     iconFrame:ClearAllPoints()
     if uf then
-        iconFrame:SetPoint("TOPRIGHT", uf, "TOPRIGHT", cfg.offsetX, cfg.offsetY)
+        iconFrame:SetPoint("TOPRIGHT", uf, "TOPRIGHT", OFFSET_X, OFFSET_Y)
     else
         iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end
@@ -185,7 +177,7 @@ local function GetState()
     if not trackedUnit then
         return STATE_MISSING
     end
-    if expirationTime - GetTime() <= cfg.auraPandemic then
+    if expirationTime - GetTime() <= PANDEMIC then
         return STATE_NEEDS_REFILL
     end
     return STATE_ACTIVE
@@ -213,8 +205,14 @@ end
 UpdateDisplay = function()
     local state = GetState()
 
+    if not inGroup and state ~= STATE_MISSING then
+        iconFrame:Hide()
+        EnableOnUpdate(false)
+        return
+    end
+
     if state == STATE_MISSING then
-        iconFrame:SetSize(cfg.missingSize, cfg.missingSize)
+        iconFrame:SetSize(SIZE_MISSING, SIZE_MISSING)
         iconFrame:ClearAllPoints()
         iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
         SetGlow("red")
@@ -224,21 +222,21 @@ UpdateDisplay = function()
         EnableOnUpdate(false)
 
     elseif state == STATE_NEEDS_REFILL then
-        iconFrame:SetSize(cfg.refillSize, cfg.refillSize)
+        iconFrame:SetSize(SIZE_ACTIVE, SIZE_ACTIVE)
         AnchorToUnit(trackedUnit)
         SetGlow("yellow")
         local remaining = expirationTime - GetTime()
-        cdFrame:SetCooldown(expirationTime - cfg.auraDuration, cfg.auraDuration)
+        cdFrame:SetCooldown(expirationTime - AURA_DURATION, AURA_DURATION)
         timerText:SetText(string.format("%.1f", math.max(0, remaining)))
         iconFrame:Show()
         EnableOnUpdate(true)
 
     else
-        iconFrame:SetSize(cfg.activeSize, cfg.activeSize)
+        iconFrame:SetSize(SIZE_ACTIVE, SIZE_ACTIVE)
         AnchorToUnit(trackedUnit)
         SetGlow(nil)
         local remaining = expirationTime - GetTime()
-        cdFrame:SetCooldown(expirationTime - cfg.auraDuration, cfg.auraDuration)
+        cdFrame:SetCooldown(expirationTime - AURA_DURATION, AURA_DURATION)
         timerText:SetText(string.format("%.1f", math.max(0, remaining)))
         iconFrame:Show()
         EnableOnUpdate(true)
@@ -250,22 +248,18 @@ end
 -- ============================================================
 
 local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("UNIT_AURA")
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)
-    if event == "ADDON_LOADED" then
-        local name = ...
-        if name ~= "DavoAura" then return end
-        LoadConfig()
-
-    elseif event == "PLAYER_ENTERING_WORLD" then
+    if event == "PLAYER_ENTERING_WORLD" then
+        RefreshInGroup()
         ScanAllUnits()
         UpdateDisplay()
 
     elseif event == "GROUP_ROSTER_UPDATE" then
+        RefreshInGroup()
         ScanAllUnits()
         UpdateDisplay()
 
@@ -276,124 +270,3 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         UpdateDisplay()
     end
 end)
-
--- ============================================================
--- Settings panel
--- ============================================================
-
-local panel = CreateFrame("Frame", "DavoAuraSettings", UIParent, "BackdropTemplate")
-panel:SetSize(300, 380)
-panel:SetPoint("CENTER")
-panel:SetBackdrop({
-    bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-    tile = true, tileSize = 32, edgeSize = 32,
-    insets = { left = 11, right = 12, top = 12, bottom = 11 },
-})
-panel:SetMovable(true)
-panel:EnableMouse(true)
-panel:RegisterForDrag("LeftButton")
-panel:SetScript("OnDragStart", panel.StartMoving)
-panel:SetScript("OnDragStop",  panel.StopMovingOrSizing)
-panel:Hide()
-
-local panelTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-panelTitle:SetPoint("TOP", panel, "TOP", 0, -16)
-panelTitle:SetText("DavoAura Settings")
-
-local function CreateRow(parent, label, y)
-    local lbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    lbl:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, y)
-    lbl:SetText(label)
-    local eb = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    eb:SetSize(90, 20)
-    eb:SetPoint("LEFT", lbl, "RIGHT", 8, 0)
-    eb:SetAutoFocus(false)
-    return eb
-end
-
-local inputs = {}
-local y0, dy = -50, -30
-inputs.auraName     = CreateRow(panel, "Aura Name",    y0 + dy * 0)
-inputs.auraDuration = CreateRow(panel, "Duration (s)", y0 + dy * 1)
-inputs.pandemicPct  = CreateRow(panel, "Pandemic %",   y0 + dy * 2)
-inputs.missingSize  = CreateRow(panel, "Missing Size", y0 + dy * 3)
-inputs.refillSize   = CreateRow(panel, "Refill Size",  y0 + dy * 4)
-inputs.activeSize   = CreateRow(panel, "Active Size",  y0 + dy * 5)
-inputs.offsetX      = CreateRow(panel, "Offset X",     y0 + dy * 6)
-inputs.offsetY      = CreateRow(panel, "Offset Y",     y0 + dy * 7)
-
-local detectBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-detectBtn:SetSize(130, 22)
-detectBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, y0 + dy * 8 + 5)
-detectBtn:SetText("Detect Duration")
-detectBtn:SetScript("OnClick", function()
-    local name = inputs.auraName:GetText()
-    for _, unit in ipairs(ALL_UNITS) do
-        if UnitExists(unit) then
-            for i = 1, 255 do
-                local auraData = C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL")
-                if not auraData or not auraData.name then break end
-                if auraData.name == name and auraData.sourceUnit == "player" and auraData.duration > 0 then
-                    inputs.auraDuration:SetText(string.format("%.0f", auraData.duration))
-                    print("DavoAura: detected duration " .. auraData.duration .. "s on " .. unit)
-                    return
-                end
-            end
-        end
-    end
-    print("DavoAura: aura not found - cast it on someone first.")
-end)
-
-local saveBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-saveBtn:SetSize(80, 22)
-saveBtn:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 20, 16)
-saveBtn:SetText("Save")
-saveBtn:SetScript("OnClick", function()
-    cfg.auraName     = inputs.auraName:GetText()
-    cfg.auraDuration = tonumber(inputs.auraDuration:GetText()) or cfg.auraDuration
-    cfg.pandemicPct  = tonumber(inputs.pandemicPct:GetText())  or cfg.pandemicPct
-    cfg.missingSize  = tonumber(inputs.missingSize:GetText())  or cfg.missingSize
-    cfg.refillSize   = tonumber(inputs.refillSize:GetText())   or cfg.refillSize
-    cfg.activeSize   = tonumber(inputs.activeSize:GetText())   or cfg.activeSize
-    cfg.offsetX      = tonumber(inputs.offsetX:GetText())      or cfg.offsetX
-    cfg.offsetY      = tonumber(inputs.offsetY:GetText())      or cfg.offsetY
-    cfg.auraPandemic = cfg.auraDuration * cfg.pandemicPct / 100
-    SaveConfig()
-    ScanAllUnits()
-    UpdateDisplay()
-    panel:Hide()
-    print("DavoAura: settings saved.")
-end)
-
-local closeBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-closeBtn:SetSize(80, 22)
-closeBtn:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -20, 16)
-closeBtn:SetText("Close")
-closeBtn:SetScript("OnClick", function() panel:Hide() end)
-
-local function OpenSettings()
-    inputs.auraName:SetText(cfg.auraName)
-    inputs.auraDuration:SetText(tostring(cfg.auraDuration))
-    inputs.pandemicPct:SetText(tostring(cfg.pandemicPct))
-    inputs.missingSize:SetText(tostring(cfg.missingSize))
-    inputs.refillSize:SetText(tostring(cfg.refillSize))
-    inputs.activeSize:SetText(tostring(cfg.activeSize))
-    inputs.offsetX:SetText(tostring(cfg.offsetX))
-    inputs.offsetY:SetText(tostring(cfg.offsetY))
-    panel:Show()
-end
-
--- ============================================================
--- Slash command
--- ============================================================
-
-SLASH_DAVOAURA1 = "/da"
-SlashCmdList["DAVOAURA"] = function(msg)
-    local cmd = msg:lower():match("^%s*(.-)%s*$")
-    if cmd == "config" or cmd == "" then
-        OpenSettings()
-    else
-        print("DavoAura: /da config - open settings")
-    end
-end

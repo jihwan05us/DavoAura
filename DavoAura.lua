@@ -55,7 +55,10 @@ local function InitButton(button)
     button:SetDurationCooldown(cd)  -- AuraContainer drives this cooldown
     button.davoCD = cd
 
-    local timerTxt = button:CreateFontString(nil, "OVERLAY")
+    local textFrame = CreateFrame("Frame", nil, button)
+    textFrame:SetAllPoints(button)
+    textFrame:SetFrameLevel(button:GetFrameLevel() + 4)
+    local timerTxt = textFrame:CreateFontString(nil, "OVERLAY")
     timerTxt:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
     timerTxt:SetPoint("BOTTOM", button, "BOTTOM", 0, 2)
 

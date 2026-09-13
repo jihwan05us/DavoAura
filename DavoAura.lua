@@ -64,10 +64,12 @@ local function InitButton(button)
         end
     end
 
-    -- Animated proc glow (ActionButtonSpellAlertTemplate), yellow tinted.
-    -- Driven manually from OnUpdate since AddPandemicRegion only supports plain textures.
+    -- Animated proc glow, stored as button.SpellActivationAlert (SB pattern).
+    -- ShowOverlayGlow / HideOverlayGlow check this exact key.
+    local glowSize = SIZE * 1.4
     local glow = CreateFrame("Frame", nil, button, "ActionButtonSpellAlertTemplate")
-    glow:SetSize(SIZE * 1.4, SIZE * 1.4)
+    glow.skipBirth = false
+    glow:SetSize(glowSize, glowSize)
     glow:SetPoint("CENTER", button, "CENTER", 0, 0)
     if glow.ProcStartFlipbook then glow.ProcStartFlipbook:SetVertexColor(1, 0.85, 0, 1) end
     if glow.ProcLoopFlipbook  then glow.ProcLoopFlipbook:SetVertexColor(1, 0.85, 0, 1)  end
@@ -76,8 +78,9 @@ local function InitButton(button)
         if self.ProcLoop and self.ProcLoop:IsPlaying() then self.ProcLoop:Stop() end
     end)
     glow:Hide()
+    button.SpellActivationAlert = glow
 
-    -- OnUpdate on glow frame (our own frame, not AuraContainer-managed)
+    -- OnUpdate on glow frame to drive pandemic show/hide (SB: ShowOverlayGlow / HideOverlayGlow)
     glow.tick   = 0
     glow.inGlow = false
     glow:SetScript("OnUpdate", function(self, elapsed)
@@ -90,8 +93,10 @@ local function InitButton(button)
         if remaining > 0 and remaining <= PANDEMIC then
             if not self.inGlow then
                 self.inGlow = true
-                self:Show()
-                if self.ProcStartAnim then self.ProcStartAnim:Play() end
+                if not self:IsShown() then
+                    self:Show()
+                    if self.ProcStartAnim then self.ProcStartAnim:Play() end
+                end
             end
         else
             if self.inGlow then

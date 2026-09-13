@@ -90,7 +90,8 @@ local function EnsureContainer(frame)
             button:SetDurationCooldown(cd)
 
             -- Pandemic glow: texture positioned OUTSIDE button bounds (SB pattern).
-            -- AddPandemicRegion lets AuraContainer show/hide it at pandemic threshold.
+            -- Padding ratio copied from SB: SIZE * HIGHLIGHT_PADDING / HIGHLIGHT_BASE_SIZE = SIZE * 7/32
+            local p = SIZE * 7 / 32
             local borderFrame = CreateFrame("Frame", nil, button)
             borderFrame:SetAllPoints(button)
             borderFrame:SetFrameStrata("HIGH")
@@ -99,9 +100,8 @@ local function EnsureContainer(frame)
             glowTex:SetTexture("Interface\\SpellActivationOverlay\\IconAlert")
             glowTex:SetBlendMode("ADD")
             glowTex:SetVertexColor(1, 0.85, 0, 0.9)
-            -- Extend 8px outside button on all sides so it appears as a glow ring, not a fill
-            glowTex:SetPoint("TOPLEFT",     button, "TOPLEFT",     -8,  8)
-            glowTex:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT",  8, -8)
+            glowTex:SetPoint("TOPLEFT",     button, "TOPLEFT",     -p,  p)
+            glowTex:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT",  p, -p)
             button:AddPandemicRegion(glowTex)
         end,
         layout = {

@@ -50,19 +50,19 @@ local function InitButton(button)
     cd:SetDrawSwipe(true)
     cd:SetSwipeColor(0, 0, 0, 0.5)
     cd:SetDrawEdge(false)
-    cd:SetHideCountdownNumbers(true)
-    cd.noCooldownCount = true
-    button:SetDurationCooldown(cd)  -- AuraContainer drives this cooldown
+    -- do NOT set noCooldownCount or SetHideCountdownNumbers:
+    -- let CooldownFrameTemplate show its built-in timer text
+    button:SetDurationCooldown(cd)
     button.davoCD = cd
 
-    -- Text frame at TOOLTIP strata to render above cooldown swipe
-    local textFrame = CreateFrame("Frame", nil, button)
-    textFrame:SetAllPoints(button)
-    textFrame:SetFrameStrata("TOOLTIP")
-    textFrame:SetFixedFrameStrata(true)
-    local timerTxt = textFrame:CreateFontString(nil, "OVERLAY")
-    timerTxt:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
-    timerTxt:SetPoint("BOTTOM", button, "BOTTOM", 0, 2)
+    -- Resize the built-in cooldown FontString (via GetRegions, same as SB)
+    for i = 1, cd:GetNumRegions() do
+        local region = select(i, cd:GetRegions())
+        if region and region:GetObjectType() == "FontString" then
+            region:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            break
+        end
+    end
 
     -- Proc glow (ActionButtonSpellAlertTemplate) for pandemic warning
     local glow = CreateFrame("Frame", nil, button, "ActionButtonSpellAlertTemplate")
@@ -76,27 +76,25 @@ local function InitButton(button)
     end)
     glow:Hide()
 
-    -- Throttled tick on button: update timer text and pandemic glow
+    -- OnUpdate for pandemic glow only (timer text is handled by CooldownFrameTemplate)
     button.davoTick   = 0
     button.davoInGlow = false
-    button:HookScript("OnUpdate", function(self, elapsed)
-        self.davoTick = self.davoTick + elapsed
-        if self.davoTick < 0.1 then return end
-        self.davoTick = 0
+    cd:HookScript("OnUpdate", function(self, elapsed)
+        button.davoTick = button.davoTick + elapsed
+        if button.davoTick < 0.1 then return end
+        button.davoTick = 0
         local startMs, durMs = cd:GetCooldownTimes()
         if not durMs or durMs == 0 then return end
         local remaining = (startMs + durMs) / 1000 - GetTime()
-        if remaining < 0 then remaining = 0 end
-        timerTxt:SetText(string.format("%.1f", remaining))
         if remaining <= PANDEMIC then
-            if not self.davoInGlow then
-                self.davoInGlow = true
+            if not button.davoInGlow then
+                button.davoInGlow = true
                 glow:Show()
                 if glow.ProcStartAnim then glow.ProcStartAnim:Play() end
             end
         else
-            if self.davoInGlow then
-                self.davoInGlow = false
+            if button.davoInGlow then
+                button.davoInGlow = false
                 glow:Hide()
                 if glow.ProcStartAnim then glow.ProcStartAnim:Stop() end
             end

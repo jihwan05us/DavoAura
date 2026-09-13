@@ -59,17 +59,21 @@ local function InitButton(button)
     timerTxt:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
     timerTxt:SetPoint("BOTTOM", button, "BOTTOM", 0, 2)
 
-    -- 2px inward yellow border for pandemic window
-    local glow = CreateFrame("Frame", nil, button, "BackdropTemplate")
-    glow:SetPoint("TOPLEFT",     button, "TOPLEFT",      2, -2)
-    glow:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2,  2)
-    glow:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 2 })
-    glow:SetBackdropBorderColor(1, 0.85, 0, 1)
-    glow:SetFrameLevel(button:GetFrameLevel() + 2)
+    -- Proc glow (ActionButtonSpellAlertTemplate) for pandemic warning
+    local glow = CreateFrame("Frame", nil, button, "ActionButtonSpellAlertTemplate")
+    glow:SetSize(SIZE * 1.4, SIZE * 1.4)
+    glow:SetPoint("CENTER", button, "CENTER", 0, 0)
+    if glow.ProcStartFlipbook then glow.ProcStartFlipbook:SetVertexColor(1, 0.85, 0, 1) end
+    if glow.ProcLoopFlipbook  then glow.ProcLoopFlipbook:SetVertexColor(1, 0.85, 0, 1)  end
+    if glow.ProcAltGlow       then glow.ProcAltGlow:SetVertexColor(1, 0.85, 0, 1)       end
+    glow:SetScript("OnHide", function(self)
+        if self.ProcLoop and self.ProcLoop:IsPlaying() then self.ProcLoop:Stop() end
+    end)
     glow:Hide()
 
     -- Throttled tick on the cooldown frame: update timer text and pandemic glow
-    cd.davoTick = 0
+    cd.davoTick   = 0
+    cd.davoInGlow = false
     cd:HookScript("OnUpdate", function(self, elapsed)
         self.davoTick = self.davoTick + elapsed
         if self.davoTick < 0.1 then return end
@@ -80,9 +84,17 @@ local function InitButton(button)
         if remaining < 0 then remaining = 0 end
         timerTxt:SetText(string.format("%.1f", remaining))
         if remaining <= PANDEMIC then
-            glow:Show()
+            if not self.davoInGlow then
+                self.davoInGlow = true
+                glow:Show()
+                if glow.ProcStartAnim then glow.ProcStartAnim:Play() end
+            end
         else
-            glow:Hide()
+            if self.davoInGlow then
+                self.davoInGlow = false
+                glow:Hide()
+                if glow.ProcStartAnim then glow.ProcStartAnim:Stop() end
+            end
         end
     end)
 end

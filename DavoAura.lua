@@ -1,19 +1,18 @@
 -- ============================================================
 -- DavoAura - Lifebloom tracker
--- Aura detection copied exactly from SweepyBoop/RaidFrames/BuffHelper.lua
--- Only visualization is changed (size, position, glow, timer)
+-- Detection framework copied from SweepyBoop/RaidFrames/BuffHelper.lua
 -- ============================================================
 
 local AURA_IDS = { [33763] = true, [290754] = true }
 local SIZE     = 26
 local PANDEMIC = 4.5  -- 15s * 0.3
 
--- issecretvalue() is a Blizzard global (retail only); mirrors SB's IsSecretValue
+-- issecretvalue() mirrors SB's IsSecretValue
 local function IsSecretValue(v)
     return issecretvalue(v)
 end
 
--- SB's own IsGroupUnit (includes "player"; WoW built-in may not)
+-- SB's IsGroupUnit
 local function IsGroupUnit(unit)
     if not unit then return false end
     return unit == "player"
@@ -24,98 +23,107 @@ local function IsGroupUnit(unit)
         or string.match(unit, "^raidpet%d+$")  ~= nil
 end
 
--- SB's IsFrameVisible with secret-value guard
+-- SB's IsFrameVisible
 local function IsFrameVisible(frame)
     local shown = frame:IsShown()
     return (not IsSecretValue(shown)) and shown
 end
 
 -- ============================================================
--- AuraButton init - called once per button by AuraContainer
--- (SB: InitializeAuraButton; visualization changed for DavoAura)
+-- FixedPixelGlow helpers (copied from SB/Common/IconHelpers.lua)
 -- ============================================================
 
-local function InitButton(button)
-    button:SetSize(SIZE, SIZE)
-    button:SetMouseMotionEnabled(false)
+local function SetFixedPixelGlowDotPosition(dot, path, progress)
+    local segmentCount = #path
+    local scaled = (progress % 1) * segmentCount
+    local index = math.floor(scaled) + 1
+    local nextIndex = (index % segmentCount) + 1
+    local segmentProgress = scaled - math.floor(scaled)
+    local from = path[index]
+    local to   = path[nextIndex]
+    dot:ClearAllPoints()
+    dot:SetPoint("CENTER", dot:GetParent(), "CENTER",
+        from.x + (to.x - from.x) * segmentProgress,
+        from.y + (to.y - from.y) * segmentProgress)
+end
 
-    local iconTex = button:CreateTexture(nil, "ARTWORK")
-    iconTex:SetAllPoints(button)
-    button:SetIcon(iconTex)  -- AuraContainer sets actual icon texture
-
-    local cd = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
-    cd:SetAllPoints(button)
-    cd:SetDrawBling(false)
-    cd:SetReverse(true)
-    cd:SetDrawSwipe(true)
-    cd:SetSwipeColor(0, 0, 0, 0.5)
-    cd:SetDrawEdge(false)
-    -- do NOT set noCooldownCount or SetHideCountdownNumbers:
-    -- let CooldownFrameTemplate show its built-in timer text
-    button:SetDurationCooldown(cd)
-    button.davoCD = cd
-
-    -- Resize the built-in cooldown FontString (via GetRegions, same as SB)
-    for i = 1, cd:GetNumRegions() do
-        local region = select(i, cd:GetRegions())
-        if region and region:GetObjectType() == "FontString" then
-            region:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
-            break
-        end
+local function SetFixedPixelGlowSize(glow, width, height, padding)
+    padding = padding or 2
+    local halfWidth  = (width  / 2) + padding
+    local halfHeight = (height / 2) + padding
+    glow.path = {
+        { x = -halfWidth, y =  halfHeight },
+        { x =  halfWidth, y =  halfHeight },
+        { x =  halfWidth, y = -halfHeight },
+        { x = -halfWidth, y = -halfHeight },
+    }
+    for i = 1, #(glow.dots or {}) do
+        SetFixedPixelGlowDotPosition(glow.dots[i], glow.path, glow.progress + glow.dots[i].offset)
     end
+end
 
-    -- Animated proc glow, stored as button.SpellActivationAlert (SB pattern).
-    -- ShowOverlayGlow / HideOverlayGlow check this exact key.
-    local glowSize = SIZE * 1.4
-    local glow = CreateFrame("Frame", nil, button, "ActionButtonSpellAlertTemplate")
-    glow.skipBirth = false
-    glow:SetSize(glowSize, glowSize)
-    glow:SetPoint("CENTER", button, "CENTER", 0, 0)
-    if glow.ProcStartFlipbook then glow.ProcStartFlipbook:SetVertexColor(1, 0.85, 0, 1) end
-    if glow.ProcLoopFlipbook  then glow.ProcLoopFlipbook:SetVertexColor(1, 0.85, 0, 1)  end
-    if glow.ProcAltGlow       then glow.ProcAltGlow:SetVertexColor(1, 0.85, 0, 1)       end
-    glow:SetScript("OnHide", function(self)
-        if self.ProcLoop and self.ProcLoop:IsPlaying() then self.ProcLoop:Stop() end
-    end)
+local function CreateFixedPixelGlow(parent, width, height, color, dotCount, dotSize, frequency, padding)
+    width     = width     or 16
+    height    = height    or width
+    dotCount  = dotCount  or 8
+    dotSize   = dotSize   or 2
+    frequency = frequency or 0.25
+    padding   = padding   or 2
+
+    local glow = CreateFrame("Frame", nil, parent)
+    glow:SetSize(1, 1)
+    glow:SetPoint("CENTER", parent, "CENTER", 0, 0)
+    glow.elapsed   = 0
+    glow.progress  = 0
+    glow.frequency = frequency
+    glow.throttle  = 0.02
+    glow.path = {}
+    glow.dots = {}
+
+    for i = 1, dotCount do
+        local dot = glow:CreateTexture(nil, "OVERLAY")
+        dot:SetColorTexture(color[1], color[2], color[3], color[4])
+        dot:SetSize(dotSize, dotSize)
+        dot.offset = (i - 1) / dotCount
+        glow.dots[i] = dot
+    end
+    SetFixedPixelGlowSize(glow, width, height, padding)
     glow:Hide()
-    button.SpellActivationAlert = glow
+    return glow
+end
 
-    -- OnUpdate on glow frame to drive pandemic show/hide (SB: ShowOverlayGlow / HideOverlayGlow)
-    glow.tick   = 0
-    glow.inGlow = false
+local function ShowFixedPixelGlow(glow)
+    if glow:IsShown() then return end
+    glow.elapsed  = 0
+    glow.progress = 0
+    for i = 1, #glow.dots do
+        SetFixedPixelGlowDotPosition(glow.dots[i], glow.path, glow.dots[i].offset)
+    end
     glow:SetScript("OnUpdate", function(self, elapsed)
-        self.tick = self.tick + elapsed
-        if self.tick < 0.1 then return end
-        self.tick = 0
-        local startMs, durMs = cd:GetCooldownTimes()
-        if not durMs or durMs == 0 then return end
-        local remaining = (startMs + durMs) / 1000 - GetTime()
-        if remaining > 0 and remaining <= PANDEMIC then
-            if not self.inGlow then
-                self.inGlow = true
-                if not self:IsShown() then
-                    self:Show()
-                    if self.ProcStartAnim then self.ProcStartAnim:Play() end
-                end
-            end
-        else
-            if self.inGlow then
-                self.inGlow = false
-                self:Hide()
-                if self.ProcStartAnim then self.ProcStartAnim:Stop() end
-            end
+        self.elapsed = self.elapsed + elapsed
+        if self.elapsed < self.throttle then return end
+        local step   = self.elapsed
+        self.elapsed = 0
+        self.progress = (self.progress + step * self.frequency) % 1
+        for i = 1, #self.dots do
+            SetFixedPixelGlowDotPosition(self.dots[i], self.path, self.progress + self.dots[i].offset)
         end
     end)
+    glow:Show()
+end
+
+local function HideFixedPixelGlow(glow)
+    if not glow then return end
+    glow:SetScript("OnUpdate", nil)
+    glow:Hide()
 end
 
 -- ============================================================
 -- Frame pool and AuraContainer lifecycle
--- Copied from SB: cufPool, EnsureContainers, ActivateContainer,
--- UpdateFrame, RefreshAllFrames, TrackFrame
 -- ============================================================
 
 local cufPool           = {}
-local usingRealAuraData = true  -- false only in Edit Mode (AURA_DATA_PROVIDER_SWITCH)
+local usingRealAuraData = true
 
 local function ShouldTrackFrameName(name)
     if not name then return false end
@@ -123,18 +131,20 @@ local function ShouldTrackFrameName(name)
         or string.sub(name, 1, 11) == "CompactRaid"
 end
 
--- SB: EnsureContainers - creates root + AuraContainer, attaches to frame
+-- Per party frame: root holds the AuraContainer, timer text, and glow.
+-- root is our own frame so OnUpdate and FontStrings are fully reliable.
 local function EnsureContainer(frame)
-    if frame.davoContainer then return frame.davoContainer end
+    if frame.davoRoot then return frame.davoContainer end
 
-    -- Intermediate root frame (SB pattern: helper.root)
     local root = CreateFrame("Frame", nil, frame)
-    root:SetSize(1, 1)
+    root:SetSize(SIZE, SIZE)
     root:SetFrameLevel(frame:GetFrameLevel() + 10)
     root:SetPoint("TOPLEFT", frame, "TOPRIGHT", 1, -1)
+    frame.davoRoot = root
 
+    -- AuraContainer (SB pattern: hide first so OnShow triggers full refresh)
     local container = CreateFrame("AuraContainer", nil, root, "CustomAuraContainerTemplate")
-    container:Hide()  -- OnShow requests full aura refresh (SB pattern)
+    container:Hide()
     container:SetFrameLevel(root:GetFrameLevel())
     container:SetSize(SIZE, SIZE)
     container:SetPoint("TOPLEFT", root, "TOPLEFT")
@@ -147,31 +157,100 @@ local function EnsureContainer(frame)
     container:AddAuraGroup("Lifebloom", "HELPFUL|PLAYER", {
         maxFrameCount = 1,
         candidateFilters = {
-            includeSpellIDs      = AURA_IDS,
+            includeSpellIDs         = AURA_IDS,
             isFromPlayerOrPlayerPet = true,
         },
         sortMethod    = AuraContainerSortMethod.Expiration,
         sortDirection = AuraContainerSortDirection.Normal,
-        initializeFrame = InitButton,
+        initializeFrame = function(button)
+            -- Exactly SB's InitializeAuraButton
+            button:SetSize(SIZE, SIZE)
+            button:SetMouseMotionEnabled(false)
+            local iconTex = button:CreateTexture(nil, "ARTWORK")
+            iconTex:SetAllPoints(button)
+            button:SetIcon(iconTex)
+            local cd = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+            cd:SetAllPoints(button)
+            cd:SetDrawBling(false)
+            cd:SetReverse(true)
+            cd:SetDrawSwipe(true)
+            cd:SetSwipeColor(0, 0, 0, 0.5)
+            cd:SetDrawEdge(true)
+            cd:SetEdgeTexture("Interface\\Cooldown\\UI-HUD-ActionBar-LoC", 1, 1, 1, 1)
+            cd:SetHideCountdownNumbers(true)  -- SB hides built-in numbers
+            cd.noCooldownCount = true         -- suppress OmniCC
+            button:SetDurationCooldown(cd)
+            root.davoCD = cd  -- store on root so our OnUpdate can read it
+        end,
         layout = {
             groupSpacing  = 0,
             elementWidth  = SIZE,
             elementHeight = SIZE,
         },
     })
-
     frame.davoContainer = container
+
+    -- Timer text on root (our own frame, always reliable)
+    local textFrame = CreateFrame("Frame", nil, root)
+    textFrame:SetAllPoints(root)
+    textFrame:SetFrameStrata("HIGH")
+    textFrame:SetFixedFrameStrata(true)
+    local timerTxt = textFrame:CreateFontString(nil, "OVERLAY")
+    timerTxt:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+    timerTxt:SetPoint("BOTTOM", root, "BOTTOM", 0, 2)
+    root.davoTimerTxt = timerTxt
+
+    -- FixedPixelGlow on root (SB pattern from classBuffWarning)
+    local glow = CreateFixedPixelGlow(root, SIZE, SIZE, { 1, 0.85, 0, 1 }, 8, 2, 0.5, 3)
+    glow:SetFrameLevel(root:GetFrameLevel() + 9)
+    root.davoGlow = glow
+
+    -- OnUpdate on root: drives timer text and glow (root is our own frame)
+    root.davoTick   = 0
+    root.davoInGlow = false
+    root:SetScript("OnUpdate", function(self, elapsed)
+        self.davoTick = self.davoTick + elapsed
+        if self.davoTick < 0.1 then return end
+        self.davoTick = 0
+
+        local cd = self.davoCD
+        if not cd then return end
+        local startMs, durMs = cd:GetCooldownTimes()
+        if not durMs or durMs == 0 then
+            self.davoTimerTxt:SetText("")
+            if self.davoInGlow then
+                self.davoInGlow = false
+                HideFixedPixelGlow(self.davoGlow)
+            end
+            return
+        end
+        local remaining = (startMs + durMs) / 1000 - GetTime()
+        if remaining < 0 then remaining = 0 end
+
+        self.davoTimerTxt:SetText(string.format("%.1f", remaining))
+
+        if remaining > 0 and remaining <= PANDEMIC then
+            if not self.davoInGlow then
+                self.davoInGlow = true
+                ShowFixedPixelGlow(self.davoGlow)
+            end
+        else
+            if self.davoInGlow then
+                self.davoInGlow = false
+                HideFixedPixelGlow(self.davoGlow)
+            end
+        end
+    end)
+
     return container
 end
 
--- SB: HideHelper
 local function HideContainer(frame)
     if frame.davoContainer then
         frame.davoContainer:Hide()
     end
 end
 
--- SB: ActivateContainer
 local function ActivateContainer(container, unit, forceRefresh)
     if container:GetUnit() ~= unit then
         container:SetUnit(unit)
@@ -181,7 +260,6 @@ local function ActivateContainer(container, unit, forceRefresh)
     container:Show()
 end
 
--- SB: UpdateFrame (guards copied exactly, minus profile/class checks)
 local function UpdateFrame(frame, forceRefresh)
     if not frame or frame:IsForbidden() then return end
 
@@ -205,14 +283,12 @@ local function UpdateFrame(frame, forceRefresh)
     ActivateContainer(container, unit, forceRefresh)
 end
 
--- SB: RefreshAllFrames
 local function RefreshAllFrames(forceRefresh)
     for frame in pairs(cufPool) do
         UpdateFrame(frame, forceRefresh)
     end
 end
 
--- SB: TrackFrame
 local function TrackFrame(frame)
     if not frame or frame:IsForbidden() then return end
     local name = frame:GetName()
@@ -230,10 +306,9 @@ hooksecurefunc("CompactUnitFrame_SetUnit",       TrackFrame)
 hooksecurefunc("CompactUnitFrame_UpdateVisible", TrackFrame)
 
 -- ============================================================
--- Events (copied from SB: SetupRaidFrameAuraModule + AuraContainerLifecycle)
+-- Events
 -- ============================================================
 
--- AURA_DATA_PROVIDER_SWITCH: false = Edit Mode fake data, NOT arena restriction
 local providerFrame = CreateFrame("Frame")
 providerFrame:RegisterEvent("AURA_DATA_PROVIDER_SWITCH")
 providerFrame:SetScript("OnEvent", function(_, _, isReal)
@@ -244,7 +319,7 @@ end)
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-eventFrame:SetScript("OnEvent", function(_, event)
+eventFrame:SetScript("OnEvent", function()
     C_Timer.After(0, function()
         RefreshAllFrames(true)
     end)

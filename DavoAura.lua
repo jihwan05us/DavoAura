@@ -193,7 +193,7 @@ local function EnsureContainer(frame)
     timerTxt:SetPoint("BOTTOM", root, "BOTTOM", 0, 2)
 
     -- FixedPixelGlow parented to root (SB: CreateFixedPixelGlow pattern)
-    local glow = CreateFixedPixelGlow(root, SIZE, SIZE, { 1, 0.85, 0, 1 }, 8, 2, 0.5, 3)
+    local glow = CreateFixedPixelGlow(root, SIZE, SIZE, { 1, 0.85, 0, 1 }, 14, 4, 1.2, -4)
     glow:SetFrameStrata("HIGH")
     glow:SetFixedFrameStrata(true)
 

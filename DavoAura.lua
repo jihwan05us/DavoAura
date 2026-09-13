@@ -64,42 +64,30 @@ local function InitButton(button)
         end
     end
 
-    -- Proc glow (ActionButtonSpellAlertTemplate) for pandemic warning
-    local glow = CreateFrame("Frame", nil, button, "ActionButtonSpellAlertTemplate")
-    glow:SetSize(SIZE * 1.4, SIZE * 1.4)
-    glow:SetPoint("CENTER", button, "CENTER", 0, 0)
-    if glow.ProcStartFlipbook then glow.ProcStartFlipbook:SetVertexColor(1, 0.85, 0, 1) end
-    if glow.ProcLoopFlipbook  then glow.ProcLoopFlipbook:SetVertexColor(1, 0.85, 0, 1)  end
-    if glow.ProcAltGlow       then glow.ProcAltGlow:SetVertexColor(1, 0.85, 0, 1)       end
-    glow:SetScript("OnHide", function(self)
-        if self.ProcLoop and self.ProcLoop:IsPlaying() then self.ProcLoop:Stop() end
-    end)
-    glow:Hide()
+    -- Pandemic glow: borderFrame at HIGH strata (SB pattern).
+    -- AddPandemicRegion hands the texture to AuraContainer which shows/hides
+    -- it automatically when remaining time enters the pandemic window.
+    local borderFrame = CreateFrame("Frame", nil, button)
+    borderFrame:SetAllPoints(button)
+    borderFrame:SetFrameStrata("HIGH")
+    borderFrame:SetFixedFrameStrata(true)
 
-    -- OnUpdate for pandemic glow only (timer text is handled by CooldownFrameTemplate)
-    button.davoTick   = 0
-    button.davoInGlow = false
-    cd:HookScript("OnUpdate", function(self, elapsed)
-        button.davoTick = button.davoTick + elapsed
-        if button.davoTick < 0.1 then return end
-        button.davoTick = 0
-        local startMs, durMs = cd:GetCooldownTimes()
-        if not durMs or durMs == 0 then return end
-        local remaining = (startMs + durMs) / 1000 - GetTime()
-        if remaining <= PANDEMIC then
-            if not button.davoInGlow then
-                button.davoInGlow = true
-                glow:Show()
-                if glow.ProcStartAnim then glow.ProcStartAnim:Play() end
-            end
-        else
-            if button.davoInGlow then
-                button.davoInGlow = false
-                glow:Hide()
-                if glow.ProcStartAnim then glow.ProcStartAnim:Stop() end
-            end
-        end
-    end)
+    local glowTex = borderFrame:CreateTexture(nil, "BORDER")
+    glowTex:SetTexture("Interface\\SpellActivationOverlay\\IconAlert")
+    glowTex:SetTexCoord(0, 0.5, 0, 0.5)
+    glowTex:SetBlendMode("ADD")
+    glowTex:SetVertexColor(1, 0.85, 0, 0.9)
+    glowTex:SetPoint("TOPLEFT",     button, "TOPLEFT",     -4,  4)
+    glowTex:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT",  4, -4)
+    button:AddPandemicRegion(glowTex)
+
+    local borderTex = borderFrame:CreateTexture(nil, "OVERLAY")
+    borderTex:SetTexture("Interface\\Buttons\\WHITE8X8")
+    borderTex:SetBlendMode("ADD")
+    borderTex:SetVertexColor(1, 0.85, 0, 1)
+    borderTex:SetPoint("TOPLEFT",     button, "TOPLEFT",      2, -2)
+    borderTex:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2,  2)
+    button:AddPandemicRegion(borderTex)
 end
 
 -- ============================================================

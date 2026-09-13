@@ -194,7 +194,8 @@ local function EnsureContainer(frame)
 
     -- FixedPixelGlow parented to root (SB: CreateFixedPixelGlow pattern)
     local glow = CreateFixedPixelGlow(root, SIZE, SIZE, { 1, 0.85, 0, 1 }, 8, 2, 0.5, 3)
-    glow:SetFrameLevel(root:GetFrameLevel() + 9)
+    glow:SetFrameStrata("HIGH")
+    glow:SetFixedFrameStrata(true)
 
     -- OnUpdate on textFrame: reads davoExpiry, updates timer and drives glow
     textFrame.tick   = 0

@@ -64,30 +64,43 @@ local function InitButton(button)
         end
     end
 
-    -- Pandemic glow: borderFrame at HIGH strata (SB pattern).
-    -- AddPandemicRegion hands the texture to AuraContainer which shows/hides
-    -- it automatically when remaining time enters the pandemic window.
-    local borderFrame = CreateFrame("Frame", nil, button)
-    borderFrame:SetAllPoints(button)
-    borderFrame:SetFrameStrata("HIGH")
-    borderFrame:SetFixedFrameStrata(true)
+    -- Animated proc glow (ActionButtonSpellAlertTemplate), yellow tinted.
+    -- Driven manually from OnUpdate since AddPandemicRegion only supports plain textures.
+    local glow = CreateFrame("Frame", nil, button, "ActionButtonSpellAlertTemplate")
+    glow:SetSize(SIZE * 1.4, SIZE * 1.4)
+    glow:SetPoint("CENTER", button, "CENTER", 0, 0)
+    if glow.ProcStartFlipbook then glow.ProcStartFlipbook:SetVertexColor(1, 0.85, 0, 1) end
+    if glow.ProcLoopFlipbook  then glow.ProcLoopFlipbook:SetVertexColor(1, 0.85, 0, 1)  end
+    if glow.ProcAltGlow       then glow.ProcAltGlow:SetVertexColor(1, 0.85, 0, 1)       end
+    glow:SetScript("OnHide", function(self)
+        if self.ProcLoop and self.ProcLoop:IsPlaying() then self.ProcLoop:Stop() end
+    end)
+    glow:Hide()
 
-    local glowTex = borderFrame:CreateTexture(nil, "BORDER")
-    glowTex:SetTexture("Interface\\SpellActivationOverlay\\IconAlert")
-    glowTex:SetTexCoord(0, 0.5, 0, 0.5)
-    glowTex:SetBlendMode("ADD")
-    glowTex:SetVertexColor(1, 0.85, 0, 0.9)
-    glowTex:SetPoint("TOPLEFT",     button, "TOPLEFT",     -4,  4)
-    glowTex:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT",  4, -4)
-    button:AddPandemicRegion(glowTex)
-
-    local borderTex = borderFrame:CreateTexture(nil, "OVERLAY")
-    borderTex:SetTexture("Interface\\Buttons\\WHITE8X8")
-    borderTex:SetBlendMode("ADD")
-    borderTex:SetVertexColor(1, 0.85, 0, 1)
-    borderTex:SetPoint("TOPLEFT",     button, "TOPLEFT",      2, -2)
-    borderTex:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2,  2)
-    button:AddPandemicRegion(borderTex)
+    -- OnUpdate on glow frame (our own frame, not AuraContainer-managed)
+    glow.tick   = 0
+    glow.inGlow = false
+    glow:SetScript("OnUpdate", function(self, elapsed)
+        self.tick = self.tick + elapsed
+        if self.tick < 0.1 then return end
+        self.tick = 0
+        local startMs, durMs = cd:GetCooldownTimes()
+        if not durMs or durMs == 0 then return end
+        local remaining = (startMs + durMs) / 1000 - GetTime()
+        if remaining > 0 and remaining <= PANDEMIC then
+            if not self.inGlow then
+                self.inGlow = true
+                self:Show()
+                if self.ProcStartAnim then self.ProcStartAnim:Play() end
+            end
+        else
+            if self.inGlow then
+                self.inGlow = false
+                self:Hide()
+                if self.ProcStartAnim then self.ProcStartAnim:Stop() end
+            end
+        end
+    end)
 end
 
 -- ============================================================

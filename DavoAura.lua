@@ -55,9 +55,10 @@ local function InitButton(button)
     button:SetDurationCooldown(cd)  -- AuraContainer drives this cooldown
     button.davoCD = cd
 
+    -- Text frame at TOOLTIP strata to render above cooldown swipe
     local textFrame = CreateFrame("Frame", nil, button)
     textFrame:SetAllPoints(button)
-    textFrame:SetFrameStrata("HIGH")
+    textFrame:SetFrameStrata("TOOLTIP")
     textFrame:SetFixedFrameStrata(true)
     local timerTxt = textFrame:CreateFontString(nil, "OVERLAY")
     timerTxt:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
@@ -75,14 +76,14 @@ local function InitButton(button)
     end)
     glow:Hide()
 
-    -- Throttled tick on the cooldown frame: update timer text and pandemic glow
-    cd.davoTick   = 0
-    cd.davoInGlow = false
-    cd:HookScript("OnUpdate", function(self, elapsed)
+    -- Throttled tick on button: update timer text and pandemic glow
+    button.davoTick   = 0
+    button.davoInGlow = false
+    button:HookScript("OnUpdate", function(self, elapsed)
         self.davoTick = self.davoTick + elapsed
         if self.davoTick < 0.1 then return end
         self.davoTick = 0
-        local startMs, durMs = self:GetCooldownTimes()
+        local startMs, durMs = cd:GetCooldownTimes()
         if not durMs or durMs == 0 then return end
         local remaining = (startMs + durMs) / 1000 - GetTime()
         if remaining < 0 then remaining = 0 end

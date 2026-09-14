@@ -88,18 +88,13 @@ local function EnsureContainer(frame)
             cd.noCooldownCount = true
             button:SetDurationCooldown(cd)
 
-            -- Pandemic glow: Blizzard shows this frame when remaining <= PANDEMIC
-            local borderFrame = CreateFrame("Frame", nil, button, "BackdropTemplate")
-            borderFrame:SetPoint("TOPLEFT",     button, "TOPLEFT",     -2,  2)
-            borderFrame:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT",  2, -2)
-            borderFrame:SetFrameStrata("HIGH")
-            borderFrame:SetFixedFrameStrata(true)
-            borderFrame:SetBackdrop({
-                edgeFile = "Interface\\Buttons\\WHITE8X8",
-                edgeSize = 2,
-            })
-            borderFrame:SetBackdropBorderColor(1, 0.85, 0, 1)
-            button:AddPandemicRegion(borderFrame)
+            -- Pandemic glow: Blizzard shows this texture when remaining <= PANDEMIC
+            local glowTex = button:CreateTexture(nil, "OVERLAY")
+            glowTex:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+            glowTex:SetBlendMode("ADD")
+            glowTex:SetVertexColor(1, 0.85, 0, 1)
+            glowTex:SetAllPoints(button)
+            button:AddPandemicRegion(glowTex)
         end,
         layout = {
             groupSpacing  = 0,

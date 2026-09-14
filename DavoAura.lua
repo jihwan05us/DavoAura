@@ -88,12 +88,12 @@ local function EnsureContainer(frame)
             cd.noCooldownCount = true
             button:SetDurationCooldown(cd)
 
-            -- Pandemic glow: Blizzard shows this texture when remaining <= PANDEMIC
-            local glowTex = button:CreateTexture(nil, "OVERLAY")
-            glowTex:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-            glowTex:SetBlendMode("ADD")
-            glowTex:SetVertexColor(1, 0.85, 0, 1)
-            glowTex:SetAllPoints(button)
+            -- Pandemic glow: solid yellow ring outside icon, icon covers center
+            local glowTex = button:CreateTexture(nil, "BACKGROUND")
+            glowTex:SetTexture("Interface\\Buttons\\WHITE8X8")
+            glowTex:SetVertexColor(1, 0.85, 0, 0.9)
+            glowTex:SetPoint("TOPLEFT",     button, "TOPLEFT",     -3,  3)
+            glowTex:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT",  3, -3)
             button:AddPandemicRegion(glowTex)
         end,
         layout = {
